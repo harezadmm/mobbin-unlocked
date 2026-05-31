@@ -5,6 +5,70 @@
 	const SITE = HOST.includes("chamjo") ? "chamjo" : HOST.includes("mobbin") ? "mobbin" : "generic";
 	console.log(TAG, "loaded on", HOST, "→ site:", SITE);
 
+	// --- Inject MAIN-world script to block paywall redirects ---------------
+	// Content scripts run in isolated world. Patching history/location must
+	// happen in the page's own world so Next.js router calls are intercepted.
+	if (SITE === "chamjo") {
+		const inject = document.createElement("script");
+		inject.id = "dl-mainworld-shim";
+		inject.textContent = `
+			(function() {
+				const TAG = "[Design Unlocked:main]";
+				const isDetailPath = (p) => /^\\/browse\\/[^/]+\\/[0-9]+$/.test(p || "");
+				const isBrowseRoot = (u) => {
+					try {
+						const s = typeof u === "string" ? u : (u && u.toString()) || "";
+						const p = s.startsWith("http") ? new URL(s).pathname : s.split("?")[0];
+						return p === "/browse" || p === "/browse/";
+					} catch { return false; }
+				};
+
+				const _push = history.pushState;
+				const _replace = history.replaceState;
+				history.pushState = function(state, title, url) {
+					if (isBrowseRoot(url) && isDetailPath(location.pathname)) {
+						console.log(TAG, "blocked pushState ->", url);
+						return;
+					}
+					return _push.apply(this, arguments);
+				};
+				history.replaceState = function(state, title, url) {
+					if (isBrowseRoot(url) && isDetailPath(location.pathname)) {
+						console.log(TAG, "blocked replaceState ->", url);
+						return;
+					}
+					return _replace.apply(this, arguments);
+				};
+
+				// Block top-level location reassignment back to /browse
+				try {
+					const desc = Object.getOwnPropertyDescriptor(window, "location");
+					// Some browsers don't allow redefining window.location, so wrap location.assign/replace instead
+					const _assign = window.location.assign.bind(window.location);
+					const _locReplace = window.location.replace.bind(window.location);
+					window.location.assign = function(url) {
+						if (isBrowseRoot(url) && isDetailPath(window.location.pathname)) {
+							console.log(TAG, "blocked location.assign ->", url);
+							return;
+						}
+						return _assign(url);
+					};
+					window.location.replace = function(url) {
+						if (isBrowseRoot(url) && isDetailPath(window.location.pathname)) {
+							console.log(TAG, "blocked location.replace ->", url);
+							return;
+						}
+						return _locReplace(url);
+					};
+				} catch (e) { console.warn(TAG, "couldn't patch location", e); }
+
+				console.log(TAG, "router redirect shim installed");
+			})();
+		`;
+		(document.head || document.documentElement).appendChild(inject);
+		inject.remove();
+	}
+
 	const stats = { scanned: 0, unlocked: 0, blurRemoved: 0, overlayRemoved: 0, paywallRemoved: 0 };
 	const seenHosts = new Set();
 
