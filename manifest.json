@@ -3,7 +3,7 @@
 	"name": "Design Library Unlocked",
 	"description": "Unlocks premium features on Mobbin and Chamjo design libraries",
 	"permissions": ["activeTab"],
-	"version": "1.0",
+	"version": "2.0",
 	"manifest_version": 3,
 	"icons": {
 		"16": "images/icon-16.png",

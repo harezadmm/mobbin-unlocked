@@ -27,12 +27,24 @@
 
 ##  Fitur
 
--  **Auto-unlock screenshot premium** — semua app screen di-upgrade ke resolusi penuh **1920px WebP** otomatis.
--  **Hapus blur paywall** — strip CSS `filter: blur()`, `backdrop-blur`, dan class Tailwind `blur-*`.
--  **Hapus tint overlay** — buang sibling `<div>` yang menutupi gambar dengan layer ungu/biru semi-transparan.
--  **Hapus banner upgrade** — sembunyikan paywall sidebar dan upsell popup.
--  **SPA-friendly** — pakai `MutationObserver` jadi tetap jalan saat navigasi internal Next.js Mobbin.
--  **Lazy-load aware** — multi-pass scan (500ms / 1.5s / 3s / 6s) menangkap gambar yang baru ter-render.
+### Mobbin
+-  **Auto-unlock screenshot premium** — semua app screen di-upgrade ke resolusi penuh **1920px WebP** otomatis
+-  **Hapus blur paywall** — strip CSS `filter: blur()`, `backdrop-blur`, dan class Tailwind `blur-*`
+-  **Hapus tint overlay** — buang sibling `<div>` yang menutupi gambar dengan layer ungu/biru semi-transparan
+-  **Hapus banner upgrade** — sembunyikan paywall sidebar dan upsell popup
+
+### Chamjo
+-  **Inject mockup screenshot** — fetch dari public Supabase bucket (`/storage/v1/object/public/app/{name}/mockup.webp`), tampilkan di kartu yang sebelumnya gembok
+-  **Hapus lock icon overlay** — buang `<div>` gembok yang menutupi mockup
+-  **Auto-dismiss paywall modal** — "Unlock All Access Now" modal langsung di-close kalau muncul
+-  **Click navigation** — klik kartu gembok → lookup ID dari API Supabase → navigate ke `/browse/{name}/{id}`
+-  **Blok client-side redirect** — patch `history.pushState/replaceState`, `Location.prototype` setters, `location.assign/replace`, anchor clicks, form submits di MAIN world
+
+> **Note:** Detail page Chamjo (`/browse/{name}/{id}`) sebagian gate via server-side & client-side check yang sulit di-bypass tanpa Pro account. Yang full work adalah browse page (cover mockup semua app visible).
+
+### General
+-  **SPA-friendly** — `MutationObserver` jadi tetap jalan saat navigasi internal Next.js
+-  **Lazy-load aware** — multi-pass scan (500ms / 1.5s / 3s / 6s) menangkap gambar yang baru ter-render
 -  **Badge indikator** — tombol  di pojok kiri-bawah menampilkan jumlah gambar yang berhasil di-unlock.
 
 ---
