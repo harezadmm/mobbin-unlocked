@@ -87,7 +87,7 @@
 
 		if (!seenHosts.has(url.hostname)) {
 			seenHosts.add(url.hostname);
-			console.debug(TAG, "img host:", url.hostname, url.pathname);
+			console.log(TAG, "img host:", url.hostname, url.pathname);
 		}
 
 		if (!rules.isCdn(url.hostname)) return;
@@ -286,9 +286,45 @@
 		const target = root && root.querySelectorAll ? root : document.body;
 		if (!target) return;
 		target.querySelectorAll("img").forEach(upscaleImage);
+		scanBackgroundImages(target);
 		stripBlurStyles(target);
 		removeChamjoLocks();
 		hidePaywall();
+	};
+
+	// Scan elements that use background-image CSS instead of <img>
+	const bgHosts = new Set();
+	const scanBackgroundImages = (root) => {
+		if (!root.querySelectorAll) return;
+		for (const el of root.querySelectorAll("[style*='background-image'], [style*='background:']")) {
+			const bg = el.style.backgroundImage || "";
+			const m = bg.match(/url\(["']?([^"')]+)["']?\)/);
+			if (!m) continue;
+			try {
+				const u = new URL(m[1], location.href);
+				if (!bgHosts.has(u.hostname)) {
+					bgHosts.add(u.hostname);
+					console.log(TAG, "bg-image host:", u.hostname, u.pathname);
+				}
+			} catch {}
+		}
+		// Also check computed styles for elements that look like image slots
+		for (const el of root.querySelectorAll("div,figure,section,article")) {
+			const cs = getComputedStyle(el);
+			if (cs.backgroundImage && cs.backgroundImage !== "none" && !el.dataset.dlBgChecked) {
+				el.dataset.dlBgChecked = "1";
+				const m = cs.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/);
+				if (m) {
+					try {
+						const u = new URL(m[1], location.href);
+						if (!bgHosts.has(u.hostname)) {
+							bgHosts.add(u.hostname);
+							console.log(TAG, "bg-image host (computed):", u.hostname, u.pathname);
+						}
+					} catch {}
+				}
+			}
+		}
 	};
 
 	// --- 6. MutationObserver -------------------------------------------------
@@ -353,6 +389,15 @@
 			return;
 		}
 		scan(document.body);
+		console.log(
+			TAG,
+			"boot scan done. <img> count:",
+			document.querySelectorAll("img").length,
+			"| hosts seen:",
+			[...seenHosts],
+			"| bg hosts:",
+			[...bgHosts],
+		);
 		makeButton();
 		observer.observe(document.documentElement, {
 			childList: true,
