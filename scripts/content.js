@@ -398,95 +398,12 @@
 		(document.head || document.documentElement).appendChild(style);
 	};
 
-	// --- 5a. Chamjo app ID map: fetch Supabase to learn name → id ----------
-	const CHAMJO_API =
-		"https://chamjo.design/api/rest/v1/Application?select=id,app_name&disable=neq.true&order=id.desc&limit=1000";
-	const CHAMJO_ANON_KEY =
-		"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kYnFjYmJnaWdveWdvdHlzeWFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NTkyNzA5NjgsImV4cCI6MTk3NDg0Njk2OH0.IFVJqHSc87brYUz34R5eKriAQen0nzVkOqt9BDlw7Vw";
-
-	let chamjoAppMap = null; // Map<appName, id>
-	let chamjoAppMapPromise = null;
-
-	const fetchChamjoAppMap = () => {
-		if (chamjoAppMap) return Promise.resolve(chamjoAppMap);
-		if (chamjoAppMapPromise) return chamjoAppMapPromise;
-		chamjoAppMapPromise = fetch(CHAMJO_API, {
-			headers: {
-				apikey: CHAMJO_ANON_KEY,
-				authorization: `Bearer ${CHAMJO_ANON_KEY}`,
-				accept: "*/*",
-				"accept-profile": "public",
-			},
-		})
-			.then((r) => r.json())
-			.then((data) => {
-				chamjoAppMap = new Map();
-				if (Array.isArray(data)) {
-					for (const app of data) {
-						if (app && app.app_name && app.id != null) {
-							chamjoAppMap.set(app.app_name, app.id);
-						}
-					}
-				}
-				console.log(TAG, "app id map loaded:", chamjoAppMap.size, "apps");
-				return chamjoAppMap;
-			})
-			.catch((e) => {
-				console.error(TAG, "failed to load app id map:", e);
-				chamjoAppMap = new Map();
-				return chamjoAppMap;
-			});
-		return chamjoAppMapPromise;
-	};
-
-	// --- 5b. Event delegation: intercept ALL clicks on Chamjo cards ---------
-	let cardDelegationInstalled = false;
-	const installCardClickDelegation = () => {
-		if (SITE !== "chamjo" || cardDelegationInstalled) return;
-		cardDelegationInstalled = true;
-
-		// Pre-fetch app id map ASAP so it's ready by click time
-		fetchChamjoAppMap();
-
-		const handler = (e) => {
-			const card =
-				e.target.closest &&
-				e.target.closest('div.relative.flex.flex-row[class*="rounded-2xl"]');
-			if (!card) return;
-			if (e.target.closest("#dl-unlocked-btn")) return;
-
-			const appNameEl = card.querySelector(
-				'span[class*="text-base-900"][class*="truncate"]',
-			);
-			const appName =
-				appNameEl && appNameEl.textContent && appNameEl.textContent.trim();
-			if (!appName) return;
-
-			// Block React/Next click handler that would open paywall modal
-			e.preventDefault();
-			e.stopPropagation();
-			if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-
-			const slug = appName.replace(/\s+/g, "%20");
-			const navigate = (id) => {
-				const url = id != null ? `/browse/${slug}/${id}` : `/browse/${slug}`;
-				console.log(TAG, "navigating to:", url, "(id:", id, ")");
-				window.location.href = url;
-			};
-
-			// If map already loaded, navigate immediately
-			if (chamjoAppMap) {
-				navigate(chamjoAppMap.get(appName));
-				return;
-			}
-			// Otherwise wait for map then navigate
-			fetchChamjoAppMap().then((map) => navigate(map.get(appName)));
-		};
-
-		document.addEventListener("click", handler, true);
-		document.addEventListener("mousedown", handler, true);
-		console.log(TAG, "card click delegation installed");
-	};
+	// Card click delegation removed: Chamjo gates detail-page content
+	// server+client side for non-Pro users, so intercepting clicks would
+	// just trap users on empty pages. Native click handlers handle free
+	// cards correctly; Pro cards trigger paywall modal which our scan
+	// auto-dismisses.
+	const installCardClickDelegation = () => {};
 
 	// --- 5b. Master scan ---------------------------------------------------
 	const scan = (root) => {
