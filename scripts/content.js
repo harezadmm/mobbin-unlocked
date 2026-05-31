@@ -395,25 +395,43 @@
 		(document.head || document.documentElement).appendChild(style);
 	};
 
-	// --- 5a. Attach click handlers to Chamjo cards ---------------------------
-	const attachCardHandlers = (root) => {
-		if (SITE !== "chamjo") return;
-		const cards = root.querySelectorAll('div.relative.flex.flex-row[class*="rounded-2xl"]');
-		for (const card of cards) {
-			if (card.dataset.dlCardClick) continue;
-			const appNameEl = card.querySelector('span[class*="text-base-900"][class*="truncate"]');
-			if (!appNameEl) continue;
-			const appName = appNameEl.textContent?.trim();
-			if (!appName) continue;
-			card.dataset.dlCardClick = "1";
-			card.style.cursor = "pointer";
-			card.onclick = (e) => {
-				e.stopPropagation();
-				const slug = appName.replace(/\s+/g, "%20");
-				console.log(TAG, "card clicked, navigating to:", slug);
-				window.location.href = `/browse/${slug}`;
-			};
-		}
+	// --- 5a. Event delegation: intercept ALL clicks on Chamjo cards ---------
+	// Use capture phase so we run BEFORE React/Next.js handlers,
+	// then stopImmediatePropagation to prevent paywall modal from firing.
+	let cardDelegationInstalled = false;
+	const installCardClickDelegation = () => {
+		if (SITE !== "chamjo" || cardDelegationInstalled) return;
+		cardDelegationInstalled = true;
+
+		const handler = (e) => {
+			// find nearest Chamjo card from click target
+			const card = e.target.closest && e.target.closest(
+				'div.relative.flex.flex-row[class*="rounded-2xl"]',
+			);
+			if (!card) return;
+			// don't hijack our own badge button
+			if (e.target.closest("#dl-unlocked-btn")) return;
+
+			const appNameEl = card.querySelector(
+				'span[class*="text-base-900"][class*="truncate"]',
+			);
+			const appName = appNameEl && appNameEl.textContent && appNameEl.textContent.trim();
+			if (!appName) return;
+
+			// Block React/Next click handler that would open paywall modal
+			e.preventDefault();
+			e.stopPropagation();
+			if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+			const slug = appName.replace(/\s+/g, "%20");
+			console.log(TAG, "card click intercepted, navigating to:", slug);
+			window.location.href = `/browse/${slug}`;
+		};
+
+		// Capture phase = true so we fire BEFORE React listeners (which use bubble)
+		document.addEventListener("click", handler, true);
+		document.addEventListener("mousedown", handler, true);
+		console.log(TAG, "card click delegation installed");
 	};
 
 	// --- 5b. Master scan ---------------------------------------------------
@@ -424,7 +442,7 @@
 		scanBackgroundImages(target);
 		stripBlurStyles(target);
 		removeChamjoLocks();
-		attachCardHandlers(target);
+		installCardClickDelegation();
 		hidePaywall();
 	};
 
@@ -535,6 +553,7 @@
 			[...bgHosts],
 		);
 		makeButton();
+		installCardClickDelegation();
 		observer.observe(document.documentElement, {
 			childList: true,
 			subtree: true,
