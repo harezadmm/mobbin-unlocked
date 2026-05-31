@@ -280,7 +280,56 @@
 	};
 
 	// --- 3b. Paywall removal -------------------------------------------------
+	const PAYWALL_PHRASES = [
+		"unlock all access",
+		"subscribe to chamjo",
+		"upgrade to pro",
+		"reactivate pro",
+		"unlock all",
+		"go pro",
+	];
+
+	const isPaywallNode = (el) => {
+		const txt = (el.textContent || "").toLowerCase().trim();
+		if (!txt) return false;
+		return PAYWALL_PHRASES.some((p) => txt.includes(p)) && txt.length < 600;
+	};
+
+	const removePaywallModal = () => {
+		// Modal dialogs typically: role=dialog, [class*="modal"], or fixed inset-0 wrappers
+		const candidates = document.querySelectorAll(
+			'[role="dialog"], [aria-modal="true"], [class*="modal" i], [class*="Modal" i], [class*="dialog" i], div[class*="fixed"][class*="inset-0"]',
+		);
+		for (const el of candidates) {
+			if (isPaywallNode(el)) {
+				el.remove();
+				stats.paywallRemoved++;
+				console.log(TAG, "removed paywall modal");
+			}
+		}
+
+		// Backdrop overlays (dark fixed inset-0 layer)
+		document.querySelectorAll('div[class*="fixed"][class*="inset-0"]').forEach((el) => {
+			const cls = el.className || "";
+			if (typeof cls !== "string") return;
+			if (/bg-(black|neutral|gray|slate)/.test(cls) || /bg-\[#[0-9A-Fa-f]+\]/.test(cls)) {
+				// only remove if it's mostly empty (a backdrop, not content)
+				if ((el.textContent || "").trim().length < 50) {
+					el.remove();
+					stats.paywallRemoved++;
+				}
+			}
+		});
+
+		// Re-enable body scroll if modal locked it
+		if (document.body.style.overflow === "hidden") {
+			document.body.style.overflow = "";
+		}
+		document.documentElement.style.overflow = "";
+	};
+
 	const hidePaywall = () => {
+		removePaywallModal();
 		document.querySelectorAll("aside").forEach((el) => {
 			if (/upgrade|pro|trial|unlock|paywall|sign up|sign in/i.test(el.textContent || "")) {
 				const rect = el.getBoundingClientRect();
