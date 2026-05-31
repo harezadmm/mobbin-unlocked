@@ -93,6 +93,47 @@
 		console.warn(TAG, "couldn't patch location methods:", e);
 	}
 
+	// --- 3b. Block anchor clicks + form submits going to /browse from detail
+	document.addEventListener(
+		"click",
+		(e) => {
+			if (!isDetailPath(location.pathname)) return;
+			const a = e.target && e.target.closest && e.target.closest("a[href]");
+			if (a && shouldBlock(a.getAttribute("href")) || (a && shouldBlock(a.href))) {
+				console.log(TAG, "blocked anchor click ->", a.href);
+				e.preventDefault();
+				e.stopPropagation();
+				if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+			}
+		},
+		true,
+	);
+	document.addEventListener(
+		"submit",
+		(e) => {
+			const f = e.target;
+			if (!f) return;
+			const action = f.action || "";
+			if (shouldBlock(action) && isDetailPath(location.pathname)) {
+				console.log(TAG, "blocked form submit ->", action);
+				e.preventDefault();
+				e.stopPropagation();
+				if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+			}
+		},
+		true,
+	);
+
+	// --- 3c. Patch window.open just in case ---------------------------------
+	const _open = window.open;
+	window.open = function (url) {
+		if (shouldBlock(url)) {
+			console.log(TAG, "blocked window.open ->", url);
+			return null;
+		}
+		return _open.apply(this, arguments);
+	};
+
 	// --- 4. Watch <meta http-equiv="refresh"> and remove -------------------
 	const stripMetaRefresh = () => {
 		document
@@ -138,15 +179,19 @@
 
 	// --- 6. Interval guard: detect URL slip and restore --------------------
 	let lastDetail = isDetailPath(location.pathname) ? location.pathname : null;
+	let slipRestoreCount = 0;
 	setInterval(() => {
 		if (isDetailPath(location.pathname)) {
 			lastDetail = location.pathname;
 			sessionStorage.setItem(SS_KEY, location.pathname);
-		} else if (lastDetail && location.pathname === "/browse") {
+			slipRestoreCount = 0;
+		} else if (lastDetail && location.pathname === "/browse" && slipRestoreCount < 20) {
+			slipRestoreCount++;
 			console.log(TAG, "URL slipped to /browse, restoring", lastDetail);
 			_replace.call(history, {}, "", lastDetail);
+			window.dispatchEvent(new PopStateEvent("popstate", { state: {} }));
 		}
-	}, 150);
+	}, 30);
 
 	console.log(TAG, "router redirect shim installed");
 })();
