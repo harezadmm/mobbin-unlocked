@@ -171,7 +171,61 @@
 		}
 	};
 
-	// --- 3. Paywall removal --------------------------------------------------
+	// --- 3a. Chamjo-specific lock overlay removal ---------------------------
+	const removeChamjoLocks = () => {
+		if (SITE !== "chamjo") return;
+
+		// Lock icon containers
+		document
+			.querySelectorAll(
+				'[data-name="icon-Lock"], [data-testid="chamjo-icon"][data-name*="Lock" i]',
+			)
+			.forEach((el) => {
+				// remove the wrapping overlay div (parent up to 2 levels)
+				let target = el;
+				for (let i = 0; i < 3 && target.parentElement; i++) {
+					const p = target.parentElement;
+					const cls = p.className || "";
+					if (
+						typeof cls === "string" &&
+						/\babsolute\b/.test(cls) &&
+						/(bottom-0|inset-0|top-0)/.test(cls)
+					) {
+						target = p;
+					}
+				}
+				target.remove();
+				stats.overlayRemoved++;
+			});
+
+		// Generic lock SVG (with that distinctive lock path)
+		document.querySelectorAll("svg path").forEach((path) => {
+			const d = path.getAttribute("d") || "";
+			if (d.startsWith("M26 10H22V7C22 5.4087")) {
+				const wrapper = path.closest('[class*="absolute"]') || path.closest("svg")?.parentElement;
+				if (wrapper) {
+					wrapper.remove();
+					stats.overlayRemoved++;
+				}
+			}
+		});
+
+		// Solid color overlay divs over images (chamjo style: bg-[#5E636FE5])
+		document.querySelectorAll('div[class*="bg-[#"]').forEach((el) => {
+			const cls = el.className || "";
+			if (typeof cls !== "string") return;
+			if (
+				/\babsolute\b/.test(cls) &&
+				(/bottom-0/.test(cls) || /inset-0/.test(cls)) &&
+				/bg-\[#[0-9A-Fa-f]{6,8}\]/.test(cls)
+			) {
+				el.remove();
+				stats.overlayRemoved++;
+			}
+		});
+	};
+
+	// --- 3b. Paywall removal -------------------------------------------------
 	const hidePaywall = () => {
 		document.querySelectorAll("aside").forEach((el) => {
 			if (/upgrade|pro|trial|unlock|paywall|sign up|sign in/i.test(el.textContent || "")) {
@@ -233,6 +287,7 @@
 		if (!target) return;
 		target.querySelectorAll("img").forEach(upscaleImage);
 		stripBlurStyles(target);
+		removeChamjoLocks();
 		hidePaywall();
 	};
 
