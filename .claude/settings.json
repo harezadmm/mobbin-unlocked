@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh repo *)"
+      "Bash(gh repo *)",
+      "Bash(rtk git *)",
+      "Bash(rtk git commit -m 'feat: make injected mockup + card clickable for Chamjo app navigation *)"
     ]
   }
 }

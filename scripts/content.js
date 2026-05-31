@@ -205,13 +205,18 @@
 		img.alt = appName;
 		img.dataset.dlInjected = "1";
 		img.style.cssText =
-			"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;z-index:1;";
+			"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;z-index:1;cursor:pointer;";
 		img.onerror = () => {
-			// fallback: try without space encoding variations
 			img.onerror = null;
 			console.log(TAG, "mockup 404 for:", appName);
 		};
-		// ensure slot is positioned
+		img.onclick = (e) => {
+			e.stopPropagation();
+			// Try to navigate to app detail page (format: /browse/AppName/id)
+			// Since we can't find ID reliably, navigate to /browse/AppName and let server handle it
+			const slug = appName.replace(/\s+/g, "%20");
+			window.location.href = `/browse/${slug}`;
+		};
 		const cs = getComputedStyle(slot);
 		if (cs.position === "static") slot.style.position = "relative";
 		slot.appendChild(img);
@@ -257,10 +262,16 @@
 			lockWrap.remove();
 			stats.overlayRemoved++;
 
-			// Inject the mockup image
+			// Inject the mockup image + make card clickable
 			if (slot && appName) {
 				console.log(TAG, "injecting mockup for:", appName);
 				injectChamjoMockup(slot, appName);
+				// Also make the card itself clickable
+				card.style.cursor = "pointer";
+				card.onclick = () => {
+					const slug = appName.replace(/\s+/g, "%20");
+					window.location.href = `/browse/${slug}`;
+				};
 			}
 		}
 
