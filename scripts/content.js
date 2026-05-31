@@ -171,46 +171,100 @@
 		}
 	};
 
-	// --- 3a. Chamjo-specific lock overlay removal ---------------------------
+	// --- 3a. Chamjo-specific: inject mockup + remove locks ------------------
+	const CHAMJO_SUPABASE = "https://ndbqcbbgigoygotysyae.supabase.co/storage/v1/object/public/app";
+
+	const buildMockupUrl = (appName) =>
+		`${CHAMJO_SUPABASE}/${encodeURIComponent(appName)}/mockup.webp`;
+
+	const findAppName = (cardRoot) => {
+		// Try common title patterns
+		const candidates = cardRoot.querySelectorAll(
+			'h1, h2, h3, h4, p[class*="font-semibold"], p[class*="font-bold"], div[class*="font-semibold"], div[class*="font-bold"], a[class*="text-xl"], span[class*="text-xl"]',
+		);
+		for (const c of candidates) {
+			const txt = (c.textContent || "").trim();
+			if (
+				txt &&
+				txt.length > 0 &&
+				txt.length < 60 &&
+				!/^(F&B|Shopping|Ride|Music|Health|Crypto|Photo|Spiritual|Digital|Groceries|Delivery|Wallet|Hailing|Streaming|App|News|Editor|Programs)/i.test(
+					txt,
+				)
+			) {
+				return txt;
+			}
+		}
+		return null;
+	};
+
+	const injectChamjoMockup = (slot, appName) => {
+		if (!appName || slot.querySelector("img[data-dl-injected]")) return;
+		const img = document.createElement("img");
+		img.src = buildMockupUrl(appName);
+		img.alt = appName;
+		img.dataset.dlInjected = "1";
+		img.style.cssText =
+			"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;z-index:1;";
+		img.onerror = () => {
+			// fallback: try without space encoding variations
+			img.onerror = null;
+			console.log(TAG, "mockup 404 for:", appName);
+		};
+		// ensure slot is positioned
+		const cs = getComputedStyle(slot);
+		if (cs.position === "static") slot.style.position = "relative";
+		slot.appendChild(img);
+		stats.unlocked++;
+	};
+
 	const removeChamjoLocks = () => {
 		if (SITE !== "chamjo") return;
 
-		// Lock icon containers
-		document
-			.querySelectorAll(
-				'[data-name="icon-Lock"], [data-testid="chamjo-icon"][data-name*="Lock" i]',
-			)
-			.forEach((el) => {
-				// remove the wrapping overlay div (parent up to 2 levels)
-				let target = el;
-				for (let i = 0; i < 3 && target.parentElement; i++) {
-					const p = target.parentElement;
-					const cls = p.className || "";
-					if (
-						typeof cls === "string" &&
-						/\babsolute\b/.test(cls) &&
-						/(bottom-0|inset-0|top-0)/.test(cls)
-					) {
-						target = p;
-					}
-				}
-				target.remove();
-				stats.overlayRemoved++;
-			});
+		const locks = document.querySelectorAll(
+			'[data-name="icon-Lock"], [data-testid="chamjo-icon"][data-name*="Lock" i]',
+		);
 
-		// Generic lock SVG (with that distinctive lock path)
-		document.querySelectorAll("svg path").forEach((path) => {
-			const d = path.getAttribute("d") || "";
-			if (d.startsWith("M26 10H22V7C22 5.4087")) {
-				const wrapper = path.closest('[class*="absolute"]') || path.closest("svg")?.parentElement;
-				if (wrapper) {
-					wrapper.remove();
-					stats.overlayRemoved++;
+		for (const lockIcon of locks) {
+			// Find lock overlay wrapper (the colored div with bottom-0/inset-0)
+			let lockWrap = lockIcon;
+			for (let i = 0; i < 3 && lockWrap.parentElement; i++) {
+				const p = lockWrap.parentElement;
+				const cls = p.className || "";
+				if (
+					typeof cls === "string" &&
+					/\babsolute\b/.test(cls) &&
+					/(bottom-0|inset-0|top-0)/.test(cls)
+				) {
+					lockWrap = p;
+					break;
 				}
+				lockWrap = p;
 			}
-		});
 
-		// Solid color overlay divs over images (chamjo style: bg-[#5E636FE5])
+			// Phone slot = lockWrap's parent (the relative container)
+			const slot = lockWrap.parentElement;
+
+			// Walk up to find the card root, then extract app name
+			let appName = null;
+			let card = slot;
+			for (let i = 0; i < 6 && card && !appName; i++) {
+				appName = findAppName(card);
+				if (!appName) card = card.parentElement;
+			}
+
+			// Remove the lock wrap
+			lockWrap.remove();
+			stats.overlayRemoved++;
+
+			// Inject the mockup image
+			if (slot && appName) {
+				console.log(TAG, "injecting mockup for:", appName);
+				injectChamjoMockup(slot, appName);
+			}
+		}
+
+		// Solid color overlay divs (cleanup pass)
 		document.querySelectorAll('div[class*="bg-[#"]').forEach((el) => {
 			const cls = el.className || "";
 			if (typeof cls !== "string") return;
