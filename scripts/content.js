@@ -398,22 +398,19 @@
 	// --- 5a. Attach click handlers to Chamjo cards ---------------------------
 	const attachCardHandlers = (root) => {
 		if (SITE !== "chamjo") return;
-		const cards = root.querySelectorAll(
-			'div[class*="rounded-2xl"][class*="cursor-pointer"][class*="flex"][class*="flex-row"]',
-		);
+		const cards = root.querySelectorAll('div.relative.flex.flex-row[class*="rounded-2xl"]');
 		for (const card of cards) {
-			if (card.dataset.dlCardClick) continue; // already handled
-			const appNameEl = card.querySelector(
-				'span[class*="text-base-900"][class*="truncate"]',
-			);
+			if (card.dataset.dlCardClick) continue;
+			const appNameEl = card.querySelector('span[class*="text-base-900"][class*="truncate"]');
 			if (!appNameEl) continue;
 			const appName = appNameEl.textContent?.trim();
 			if (!appName) continue;
 			card.dataset.dlCardClick = "1";
+			card.style.cursor = "pointer";
 			card.onclick = (e) => {
 				e.stopPropagation();
 				const slug = appName.replace(/\s+/g, "%20");
-				console.log(TAG, "navigating to:", slug);
+				console.log(TAG, "card clicked, navigating to:", slug);
 				window.location.href = `/browse/${slug}`;
 			};
 		}
