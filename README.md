@@ -2,11 +2,17 @@
   <img alt="Mobbin Unlocked" height="120" src="./images/icon-128.png">
 </p>
 
-<h1 align="center">Mobbin Unlocked </h1>
+<h1 align="center">Design Library Unlocked</h1>
 
 <p align="center">
-  <b>Buka semua fitur Pro Mobbin.com — gratis, tanpa login, tanpa langganan.</b><br/>
+  <b>Buka semua fitur Pro design library populer — gratis, tanpa login, tanpa langganan.</b><br/>
   Chrome / Edge / Brave extension yang menghapus paywall, blur, dan tint overlay pada screenshot premium.
+</p>
+
+<p align="center">
+  <b>Supported sites:</b>
+  <a href="https://mobbin.com">Mobbin</a> ·
+  <a href="https://chamjo.design">Chamjo</a>
 </p>
 
 <p align="center">

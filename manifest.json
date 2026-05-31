@@ -1,7 +1,7 @@
 {
 	"$schema": "https://json.schemastore.org/chrome-manifest",
-	"name": "Mobbin Unlocked",
-	"description": "Unlocks Mobbin's premium features",
+	"name": "Design Library Unlocked",
+	"description": "Unlocks premium features on Mobbin and Chamjo design libraries",
 	"permissions": ["activeTab"],
 	"version": "1.0",
 	"manifest_version": 3,
@@ -15,7 +15,12 @@
 	"content_scripts": [
 		{
 			"js": ["scripts/content.js"],
-			"matches": ["*://mobbin.com/*", "*://*.mobbin.com/*"],
+			"matches": [
+				"*://mobbin.com/*",
+				"*://*.mobbin.com/*",
+				"*://chamjo.design/*",
+				"*://*.chamjo.design/*"
+			],
 			"run_at": "document_start"
 		}
 	]

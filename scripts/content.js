@@ -1,14 +1,80 @@
-// Mobbin Unlocked - robust auto version
+// Design Library Unlocked - multi-site (Mobbin + Chamjo)
 (() => {
-	const TAG = "[Mobbin Unlocked]";
-	console.log(TAG, "loaded on", location.href);
+	const TAG = "[Design Unlocked]";
+	const HOST = location.hostname;
+	const SITE = HOST.includes("chamjo") ? "chamjo" : HOST.includes("mobbin") ? "mobbin" : "generic";
+	console.log(TAG, "loaded on", HOST, "→ site:", SITE);
 
-	const stats = { scanned: 0, unlocked: 0, blurRemoved: 0, paywallRemoved: 0 };
+	const stats = { scanned: 0, unlocked: 0, blurRemoved: 0, overlayRemoved: 0, paywallRemoved: 0 };
 	const seenHosts = new Set();
 
-	// --- 1. Image upscaling -------------------------------------------------
+	// --- Site-specific image upscaling rules ---------------------------------
+	const SITE_RULES = {
+		mobbin: {
+			isCdn: (h) =>
+				h.endsWith("mobbin.com") || h.includes("bytescale") || h.includes("upcdn.io"),
+			isContent: (path) =>
+				/(app_screens|web_screens|screens|flows|screenshots)/i.test(path),
+			upscale: (url) => {
+				const p = url.searchParams;
+				p.set("f", "webp");
+				p.set("w", "1920");
+				p.set("q", "90");
+				p.set("fit", "shrink-cover");
+				return url.toString();
+			},
+		},
+		chamjo: {
+			isCdn: (h) =>
+				h.endsWith("chamjo.design") ||
+				h.includes("cloudinary") ||
+				h.includes("imgix") ||
+				h.includes("supabase") ||
+				h.includes("cloudfront") ||
+				h.includes("amazonaws") ||
+				h.includes("vercel") ||
+				h.includes("imagedelivery.net") ||
+				h.includes("r2.dev"),
+			isContent: () => true, // chamjo: try all images
+			upscale: (url) => {
+				const p = url.searchParams;
+				// Strip common width-limiting params
+				["w", "width", "h", "height", "q", "quality"].forEach((k) => {
+					if (p.has(k)) {
+						const v = parseInt(p.get(k), 10);
+						if (k === "w" || k === "width") p.set(k, "1920");
+						else if (k === "q" || k === "quality") p.set(k, "90");
+						else if ((k === "h" || k === "height") && v < 1080) p.set(k, "1920");
+					}
+				});
+				// Cloudinary-style path: /image/upload/w_400,q_60/...
+				if (url.pathname.includes("/upload/")) {
+					url.pathname = url.pathname.replace(
+						/\/upload\/[^/]*\//,
+						"/upload/w_1920,q_90,f_auto/",
+					);
+				}
+				// Imgix-style
+				if (url.hostname.includes("imgix")) {
+					p.set("w", "1920");
+					p.set("q", "90");
+					p.set("auto", "format,compress");
+				}
+				return url.toString();
+			},
+		},
+		generic: {
+			isCdn: () => true,
+			isContent: () => false,
+			upscale: (url) => url.toString(),
+		},
+	};
+
+	const rules = SITE_RULES[SITE];
+
+	// --- 1. Image upscaling --------------------------------------------------
 	const upscaleImage = (img) => {
-		if (!img || img.dataset.mobbinUnlocked === "1") return;
+		if (!img || img.dataset.dlUnlocked === "1") return;
 		const rawSrc = img.currentSrc || img.src;
 		if (!rawSrc || rawSrc.startsWith("data:")) return;
 
@@ -21,75 +87,34 @@
 
 		if (!seenHosts.has(url.hostname)) {
 			seenHosts.add(url.hostname);
-			console.debug(TAG, "image host seen:", url.hostname, url.pathname);
+			console.debug(TAG, "img host:", url.hostname, url.pathname);
 		}
 
-		const host = url.hostname;
-		const isMobbinCdn =
-			host.endsWith("mobbin.com") ||
-			host.includes("bytescale") ||
-			host.includes("upcdn.io");
-		if (!isMobbinCdn) return;
-
-		const path = url.pathname.toLowerCase();
-		const isContentImg =
-			path.includes("app_screens") ||
-			path.includes("screens") ||
-			path.includes("flows") ||
-			path.includes("web_screens") ||
-			path.includes("screenshots");
-		if (!isContentImg) return;
+		if (!rules.isCdn(url.hostname)) return;
+		if (!rules.isContent(url.pathname)) return;
 
 		stats.scanned++;
-
-		// Bytescale-style transform params
-		const params = url.searchParams;
-		params.set("f", "webp");
-		params.set("w", "1920");
-		params.set("q", "90");
-		params.set("fit", "shrink-cover");
-
-		const newSrc = url.toString();
-		if (newSrc !== rawSrc) {
+		const newSrc = rules.upscale(url);
+		if (newSrc && newSrc !== rawSrc) {
 			img.src = newSrc;
 			img.removeAttribute("srcset");
 			img.removeAttribute("loading");
 			img.style.filter = "none";
-			img.dataset.mobbinUnlocked = "1";
+			img.dataset.dlUnlocked = "1";
 			stats.unlocked++;
+		} else {
+			img.dataset.dlUnlocked = "1";
 		}
 
-		// Remove sibling overlay divs that sit on top of the image
-		// (Mobbin uses: <div class="absolute inset-0 bg-[hsl(...)] backdrop-blur-[10px]">)
-		const parent = img.parentElement;
-		if (parent) {
-			parent.querySelectorAll(":scope > div").forEach((sib) => {
-				if (sib === img) return;
-				const cls = sib.className || "";
-				if (typeof cls !== "string") return;
-				const isOverlay =
-					/\babsolute\b/.test(cls) &&
-					/\binset-0\b/.test(cls) &&
-					(/backdrop-blur/.test(cls) ||
-						/\bbg-\[/.test(cls) ||
-						/\bbg-(white|black|neutral)/.test(cls));
-				if (isOverlay) {
-					sib.remove();
-					stats.blurRemoved++;
-				}
-			});
-		}
-
-		// Walk parents: strip blur classes + nuke "after:bg-*" tint overlays
+		// Walk parents: strip blur/overlay classes
 		let p = img.parentElement;
 		let depth = 0;
 		while (p && depth < 6) {
-			p.setAttribute("data-mobbin-cleaned", "1");
-			if (p.className && typeof p.className === "string") {
+			p.setAttribute("data-dl-cleaned", "1");
+			if (typeof p.className === "string") {
 				const cleaned = p.className
 					.replace(/\bblur(-[\w-]+)?\b/g, "")
 					.replace(/\bbackdrop-blur(-[\w-]+)?\b/g, "")
-					// Tailwind after:/before: tint utilities
 					.replace(/\b(after|before):bg-[\w/\[\].#-]+/g, "")
 					.replace(/\b(after|before):from-[\w/\[\].#-]+/g, "")
 					.replace(/\b(after|before):to-[\w/\[\].#-]+/g, "")
@@ -110,12 +135,31 @@
 			p = p.parentElement;
 			depth++;
 		}
+
+		// Remove sibling overlay divs (Mobbin-style: <div absolute inset-0 bg-... backdrop-blur>)
+		const parent = img.parentElement;
+		if (parent) {
+			parent.querySelectorAll(":scope > div").forEach((sib) => {
+				const cls = sib.className || "";
+				if (typeof cls !== "string") return;
+				const isOverlay =
+					/\babsolute\b/.test(cls) &&
+					/\binset-0\b/.test(cls) &&
+					(/backdrop-blur/.test(cls) ||
+						/\bbg-\[/.test(cls) ||
+						/\bbg-(white|black|neutral)/.test(cls));
+				if (isOverlay) {
+					sib.remove();
+					stats.overlayRemoved++;
+				}
+			});
+		}
 	};
 
-	// --- 2. Remove blur via computed CSS ------------------------------------
+	// --- 2. Strip computed blur ----------------------------------------------
 	const stripBlurStyles = (root) => {
-		const all = root.querySelectorAll ? root.querySelectorAll("*") : [];
-		for (const el of all) {
+		if (!root.querySelectorAll) return;
+		for (const el of root.querySelectorAll("*")) {
 			const cs = getComputedStyle(el);
 			if (cs.filter && cs.filter.includes("blur")) {
 				el.style.setProperty("filter", "none", "important");
@@ -127,18 +171,39 @@
 		}
 	};
 
-	// Inject a global CSS override to kill all blur effects on screens
+	// --- 3. Paywall removal --------------------------------------------------
+	const hidePaywall = () => {
+		document.querySelectorAll("aside").forEach((el) => {
+			if (/upgrade|pro|trial|unlock|paywall|sign up|sign in/i.test(el.textContent || "")) {
+				const rect = el.getBoundingClientRect();
+				// only remove if it looks like a side panel, not the main nav
+				if (rect.width < window.innerWidth * 0.5) {
+					el.remove();
+					stats.paywallRemoved++;
+				}
+			}
+		});
+		document
+			.querySelectorAll(
+				'[data-sentry-component*="Paywall" i], [data-sentry-component*="Upgrade" i], [class*="paywall" i], [class*="Paywall" i], [class*="upsell" i]',
+			)
+			.forEach((el) => {
+				el.remove();
+				stats.paywallRemoved++;
+			});
+	};
+
+	// --- 4. Inject CSS safety net --------------------------------------------
 	const injectCss = () => {
-		if (document.getElementById("mobbin-unlocked-style")) return;
+		if (document.getElementById("dl-unlocked-style")) return;
 		const style = document.createElement("style");
-		style.id = "mobbin-unlocked-style";
+		style.id = "dl-unlocked-style";
 		style.textContent = `
 			img { filter: none !important; -webkit-filter: none !important; opacity: 1 !important; }
 			[class*="blur"] img, [class*="Blur"] img { filter: none !important; }
 
-			/* Kill tint overlay only on containers that wrap a screenshot image */
-			[data-mobbin-cleaned="1"]::after,
-			[data-mobbin-cleaned="1"]::before {
+			[data-dl-cleaned="1"]::after,
+			[data-dl-cleaned="1"]::before {
 				background: none !important;
 				background-image: none !important;
 				background-color: transparent !important;
@@ -147,41 +212,22 @@
 				opacity: 0 !important;
 			}
 
-			/* Mobbin's blur overlay div sibling of <img> */
 			div.absolute.inset-0[class*="backdrop-blur"],
-			div.absolute.inset-0[class*="bg-[hsl"] {
+			div.absolute.inset-0[class*="bg-[hsl"],
+			div.absolute.inset-0[class*="bg-[rgb"] {
 				display: none !important;
 			}
 
-			/* Paywall containers */
 			[data-sentry-component*="Paywall" i],
 			[data-sentry-component*="Upgrade" i],
 			[class*="paywall" i],
-			[class*="Paywall" i] { display: none !important; }
+			[class*="Paywall" i],
+			[class*="upsell" i] { display: none !important; }
 		`;
 		(document.head || document.documentElement).appendChild(style);
 	};
 
-	// --- 3. Hide paywall / upsell -------------------------------------------
-	const hidePaywall = () => {
-		document.querySelectorAll("aside").forEach((el) => {
-			// Mobbin's free-trial / upgrade aside
-			if (/upgrade|pro|trial|unlock|paywall/i.test(el.textContent || "")) {
-				el.remove();
-				stats.paywallRemoved++;
-			}
-		});
-		document
-			.querySelectorAll(
-				'[data-sentry-component*="Paywall" i], [data-sentry-component*="Upgrade" i], [class*="paywall" i]',
-			)
-			.forEach((el) => {
-				el.remove();
-				stats.paywallRemoved++;
-			});
-	};
-
-	// --- 4. Master scan -----------------------------------------------------
+	// --- 5. Master scan ------------------------------------------------------
 	const scan = (root) => {
 		const target = root && root.querySelectorAll ? root : document.body;
 		if (!target) return;
@@ -190,7 +236,7 @@
 		hidePaywall();
 	};
 
-	// --- 5. Observe SPA mutations -------------------------------------------
+	// --- 6. MutationObserver -------------------------------------------------
 	const observer = new MutationObserver((mutations) => {
 		for (const m of mutations) {
 			if (m.type === "childList") {
@@ -200,20 +246,18 @@
 						else scan(n);
 					}
 				});
-			} else if (m.type === "attributes") {
-				if (m.target.tagName === "IMG") {
-					m.target.dataset.mobbinUnlocked = "";
-					upscaleImage(m.target);
-				}
+			} else if (m.type === "attributes" && m.target.tagName === "IMG") {
+				m.target.dataset.dlUnlocked = "";
+				upscaleImage(m.target);
 			}
 		}
 	});
 
-	// --- 6. UI badge --------------------------------------------------------
+	// --- 7. UI badge ---------------------------------------------------------
 	let button;
 	const makeButton = () => {
 		button = document.createElement("button");
-		button.id = "mobbin-unlocked-btn";
+		button.id = "dl-unlocked-btn";
 		button.style.cssText = [
 			"position:fixed",
 			"left:20px",
@@ -231,8 +275,8 @@
 			"cursor:pointer",
 			"box-shadow:0 4px 14px rgba(0,0,0,.5)",
 		].join(";");
-		button.innerHTML = `🔓 <span id="mu-count">0</span>`;
-		button.title = "Mobbin Unlocked — click to rescan";
+		button.innerHTML = `🔓 <span id="dl-count">0</span> · ${SITE}`;
+		button.title = "Design Library Unlocked — click to rescan";
 		button.onclick = () => {
 			scan(document.body);
 			console.log(TAG, "stats", stats, "hosts:", [...seenHosts]);
@@ -242,11 +286,11 @@
 	};
 
 	const refreshBadge = () => {
-		const el = button && button.querySelector("#mu-count");
+		const el = button && button.querySelector("#dl-count");
 		if (el) el.textContent = stats.unlocked;
 	};
 
-	// --- 7. Boot ------------------------------------------------------------
+	// --- 8. Boot -------------------------------------------------------------
 	const boot = () => {
 		injectCss();
 		if (!document.body) {
@@ -262,7 +306,6 @@
 			attributeFilter: ["src", "srcset", "class", "style"],
 		});
 		setInterval(refreshBadge, 800);
-		// extra delayed scans for late-hydrating Next.js content
 		[500, 1500, 3000, 6000].forEach((t) => setTimeout(() => scan(document.body), t));
 	};
 
